@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Project outputs (regenerated each run)
+build/
+
+# Backgrounds & generated media (large / licensed — don't commit)
+assets/*
+!assets/.gitkeep
+*.mp4
+*.mp3
+
+# Secrets & local environment
+.env
+*.local
+
+# Editor / OS cruft
+.vscode/
+.DS_Store
+Thumbs.db
