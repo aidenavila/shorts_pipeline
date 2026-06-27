@@ -1,22 +1,15 @@
 """
-subtitles.py — caption builders.
+subtitles.py — caption builders (simple + word-by-word highlight).
 
-Two styles:
-  - make_caption_clips()           : simple, a few words at a time (centered).
-  - make_highlight_caption_clips() : the popular "word-by-word" look — a small
-                                     group is shown, and the currently-spoken
-                                     word is recoloured (and slightly enlarged)
-                                     as the narration reaches it.
-
-The highlight style works because edge-tts gives us each word's start/end. For
-every group we lay the words out ourselves (measuring rendered widths, wrapping
-to a second line if needed) so we know each word's exact (x, y). Then per word:
-  - a base (white) clip spanning the whole group's time, at that position;
-  - a highlight (coloured, optionally scaled) clip on top, shown only during
-    that word's own time window.
-Because we control the coordinates, the highlight lands exactly over its word.
+Captions are vertically centered on a target line and clamped inside a safe area
+so they never run off the top or bottom of the frame. Each word is rendered with
+a small margin so its outline/descenders aren't clipped.
 """
 from moviepy import TextClip
+
+SAFE_TOP = 0.10      # keep captions within the middle 80% of the height
+SAFE_BOTTOM = 0.90
+LINE_SPACING = 1.25  # line height as a multiple of font size
 
 
 def _chunk(word_timings, max_words):
@@ -25,9 +18,12 @@ def _chunk(word_timings, max_words):
 
 
 def _word_clip(text, font, font_size, color, stroke_color, stroke_width):
+    # margin gives the stroke room so it isn't clipped at the glyph box edges
+    m = max(stroke_width * 2, 6)
     return TextClip(
         font=font, text=text, font_size=font_size, color=color,
         stroke_color=stroke_color, stroke_width=stroke_width, method="label",
+        margin=(m, m),
     )
 
 
@@ -37,21 +33,24 @@ def _word_clip(text, font, font_size, color, stroke_color, stroke_width):
 def make_caption_clips(word_timings, video_size, font, *,
                        max_words=3, font_size=90, color="white",
                        stroke_color="black", stroke_width=5,
-                       y_fraction=0.60):
+                       y_fraction=0.50):
     w, h = video_size
     clips = []
     for chunk in _chunk(word_timings, max_words):
         text = " ".join(x["word"] for x in chunk).upper()
         start, end = chunk[0]["start"], chunk[-1]["end"]
-        clip = (
-            TextClip(font=font, text=text, font_size=font_size, color=color,
-                     stroke_color=stroke_color, stroke_width=stroke_width,
-                     method="caption", size=(int(w * 0.9), None),
-                     text_align="center")
-            .with_start(start)
-            .with_duration(max(end - start, 0.2))
-            .with_position(("center", int(h * y_fraction)))
+        clip = TextClip(
+            font=font, text=text, font_size=font_size, color=color,
+            stroke_color=stroke_color, stroke_width=stroke_width,
+            method="caption", size=(int(w * 0.86), None), text_align="center",
+            margin=(max(stroke_width * 2, 6), max(stroke_width * 2, 6)),
         )
+        # vertically centre on the target line, clamped to the safe area
+        y = int(h * y_fraction) - clip.h // 2
+        y = max(int(h * SAFE_TOP), min(y, int(h * SAFE_BOTTOM) - clip.h))
+        clip = (clip.with_start(start)
+                    .with_duration(max(end - start, 0.2))
+                    .with_position(("center", y)))
         clips.append(clip)
     return clips
 
@@ -61,11 +60,10 @@ def make_caption_clips(word_timings, video_size, font, *,
 # --------------------------------------------------------------------------- #
 def _layout_group(group, video_size, font, font_size, base_color,
                   stroke_color, stroke_width, y_fraction):
-    """Measure + position each word in the group. Returns a list of dicts with
-    keys: word(dict), base(TextClip), width, height, x, y."""
     W, H = video_size
-    max_w = int(W * 0.9)
-    space = int(font_size * 0.32)
+    max_w = int(W * 0.86)
+    space = int(font_size * 0.30)
+    line_height = int(font_size * LINE_SPACING)
 
     items = []
     for w in group:
@@ -84,26 +82,28 @@ def _layout_group(group, video_size, font, font_size, base_color,
             lines[-1].append(it)
             cur += add
 
-    line_h = max(it["height"] for it in items)
-    gap = int(line_h * 0.15)
-    total_h = len(lines) * line_h + (len(lines) - 1) * gap
+    total_h = len(lines) * line_height
     top = int(H * y_fraction) - total_h // 2
+    # clamp so the whole block stays inside the safe area
+    top = max(int(H * SAFE_TOP), min(top, int(H * SAFE_BOTTOM) - total_h))
 
     for li, line in enumerate(lines):
         line_w = sum(it["width"] for it in line) + space * (len(line) - 1)
         x = (W - line_w) // 2
-        y = top + li * (line_h + gap)
+        line_top = top + li * line_height
         for it in line:
-            it["x"], it["y"] = x, y
+            it["x"] = x
+            # centre each word vertically within its line slot
+            it["y"] = line_top + (line_height - it["height"]) // 2
             x += it["width"] + space
     return items
 
 
 def make_highlight_caption_clips(word_timings, video_size, font, *,
-                                 max_words=4, font_size=90, base_color="white",
+                                 max_words=3, font_size=90, base_color="white",
                                  highlight_color="#FFE000", stroke_color="black",
                                  stroke_width=5, active_scale=1.12,
-                                 y_fraction=0.60):
+                                 y_fraction=0.50):
     clips = []
     for group in _chunk(word_timings, max_words):
         g_start, g_end = group[0]["start"], group[-1]["end"]
@@ -111,13 +111,11 @@ def make_highlight_caption_clips(word_timings, video_size, font, *,
                               stroke_color, stroke_width, y_fraction)
         for it in items:
             w = it["word"]
-            # Base (white) for the whole group duration.
             clips.append(
                 it["base"].with_start(g_start)
                           .with_duration(max(g_end - g_start, 0.1))
                           .with_position((it["x"], it["y"]))
             )
-            # Highlight (coloured + popped) only while this word is spoken.
             hi = _word_clip(w["word"].upper(), font, font_size,
                             highlight_color, stroke_color, stroke_width)
             hx, hy = it["x"], it["y"]

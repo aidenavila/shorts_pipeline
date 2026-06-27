@@ -20,15 +20,16 @@ PITCH = "+0Hz"
 
 # ---- Captions --------------------------------------------------------------
 CAPTION_STYLE = "highlight"    # "highlight" (word-by-word) or "simple"
-MAX_WORDS_PER_CAPTION = 4      # words shown on screen at once
+MAX_WORDS_PER_CAPTION = 3      # words shown on screen at once (3 reads best)
 CAPTION_FONT_SIZE = 90
 CAPTION_COLOR = "white"
 CAPTION_STROKE_COLOR = "black"
 CAPTION_STROKE_WIDTH = 5
 HIGHLIGHT_COLOR = "#FFE000"    # colour of the currently-spoken word
 ACTIVE_SCALE = 1.12           # how much the active word pops (1.0 = no pop)
-# Vertical position as a fraction of frame height (0 = top, 1 = bottom).
-CAPTION_Y_FRACTION = 0.60
+# Vertical position as a fraction of frame height (0.5 = centre). Captions are
+# auto-clamped to the middle 80% so they never run off the top or bottom edge.
+CAPTION_Y_FRACTION = 0.50
 
 # ---- Files -----------------------------------------------------------------
 # A background loop you own/licensed (gameplay, satisfying clips, etc.).
@@ -38,14 +39,20 @@ NARRATION_FILE = "build/narration.mp3"
 OUTPUT_FILE = "build/short.mp4"
 
 # ---- Reddit source (optional; needs PRAW + credentials) --------------------
-USE_REDDIT = False              # False -> always use the built-in sample story
-SUBREDDIT = "amitheasshole"    # also try: horror, entitledparents, tifu
+USE_REDDIT = True              # False -> always use the built-in sample story
+# For narratable horror STORIES use: nosleep, shortscarystories, creepypasta.
+# (r/horror is mostly movie discussion/links, not original stories.)
+SUBREDDIT = "shortscarystories"
 REDDIT_SORT = "top"            # "top", "hot", or "new"
 REDDIT_TIME_FILTER = "week"    # for "top": hour/day/week/month/year/all
 STORY_MIN_CHARS = 200
-STORY_MAX_CHARS = 1100         # ~60s Short; raise for long-form videos
+STORY_MAX_CHARS = 6000         # allow long stories — multi-part splits them up
 SKIP_NSFW = True
 SEEN_FILE = "build/seen.json"  # remembers used posts so reruns pick new ones
+
+# ---- Multi-part series -----------------------------------------------------
+MULTIPART = True               # split long narration into a numbered series
+MAX_PART_SECONDS = 60          # max length of each part (Shorts cap is 60s)
 
 
 def find_font():
